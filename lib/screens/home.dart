@@ -1,8 +1,14 @@
+import 'dart:async';
+
 import 'package:ems_project/screens/action_pages.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+// import 'package:workmanager/workmanager.dart';
+import 'package:geolocator/geolocator.dart';
 import '../api_service.dart'; // Ensure this path is correct
+
+Timer? _locationTimer;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -22,40 +28,94 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _fetchUserData();
+    _checkCurrentClockStatus();
+    _startLiveTracking();
+  }
+
+  @override
+  void dispose() {
+    _locationTimer?.cancel(); // Clean up the timer when app closes
+    super.dispose();
+  }
+
+  void _startLiveTracking() {
+    // 1. Initial hit
+    _sendLocationToBackend();
+
+    // 2. Repeat every 15 minutes
+    _locationTimer = Timer.periodic(const Duration(minutes: 15), (timer) {
+      _sendLocationToBackend();
+    });
+  }
+
+  Future<void> _sendLocationToBackend() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      // Check permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always) {
+        Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+
+        // Hit your Flask API
+        await ApiService().updateLiveLocation(
+          user.uid,
+          position.latitude,
+          position.longitude,
+        );
+        print(
+          "Location synced to Flask: ${position.latitude}, ${position.longitude}",
+        );
+      }
+    } catch (e) {
+      print("Location tracking error: $e");
+    }
   }
 
   Future<void> _fetchUserData() async {
+    if (!mounted) return;
+    setState(() => isLoading = true);
+
     try {
       User? user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        // 1. Get Profile from Firestore
         DocumentSnapshot userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .get();
 
-        // 2. Get Stats from Flask API
-        final response = await ApiService().fetchUserStats(user.uid);
+        Map<String, dynamic> response = {};
+        try {
+          response = await ApiService()
+              .fetchUserStats(user.uid)
+              .timeout(const Duration(seconds: 4));
+        } catch (e) {
+          print("Backend stats unreachable: $e");
+        }
 
         if (userDoc.exists && mounted) {
           final data = userDoc.data() as Map<String, dynamic>;
           setState(() {
-            userName = data['name'] ?? "User";
+            // Check BOTH keys to be safe
+            userName = data['full_name'] ?? "User";
             role = data['role'] ?? "Employee";
             attendance = response['attendance_rate'] ?? "0%";
             leaves = response['leaves_taken'] ?? "0";
-            isLoading = false;
           });
         }
       }
     } catch (e) {
-      debugPrint("Error fetching data: $e");
-      if (mounted) {
-        setState(() {
-          userName = "Error";
-          isLoading = false;
-        });
-      }
+      print("UI Sync Error: $e");
+    } finally {
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -278,40 +338,67 @@ class _HomePageState extends State<HomePage> {
 
   bool isClockedIn = false; // Add this variable at the top of your state
 
-  // 1. Function to handle the API call
-  Future<void> _handleClockInOut() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  Future<void> _checkCurrentClockStatus() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
 
-    // Determine action based on current state
-    String action = isClockedIn ? "out" : "in";
+      final query = await FirebaseFirestore.instance
+          .collection('attendance')
+          .where('uid', isEqualTo: uid)
+          .orderBy('timestamp', descending: true)
+          .limit(1)
+          .get();
 
-    setState(() => isLoading = true);
-
-    final response = await ApiService().clockInOut(user.uid, action);
-
-    if (mounted) {
-      setState(() => isLoading = false);
-
-      if (response.containsKey('message')) {
+      if (query.docs.isNotEmpty) {
+        final lastAction = query.docs.first.data()['type'];
         setState(() {
-          isClockedIn = !isClockedIn; // Toggle the state locally
+          // If last action was 'in', then isClockedIn should be true
+          isClockedIn = (lastAction == 'in');
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(response['message']),
-            backgroundColor: isClockedIn ? Colors.green : Colors.orange,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(response['error'] ?? "Error occurred")),
-        );
+        print("Current Status: ${isClockedIn ? 'Clocked IN' : 'Clocked OUT'}");
       }
+    } catch (e) {
+      print("Error checking status: $e");
     }
   }
 
-  // 2. Updated Dialog
+  Future<void> _handleClockInOut() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  String action = isClockedIn ? "out" : "in";
+  setState(() => isLoading = true); // This starts the loading spinner
+
+  try {
+    // We add a timeout so the app doesn't spin forever if the server is slow
+    final response = await ApiService().clockInOut(user.uid, action).timeout(
+      const Duration(seconds: 10),
+    );
+
+    if (mounted) {
+      if (response.containsKey('message')) {
+        setState(() => isClockedIn = !isClockedIn);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response['message']), backgroundColor: Colors.green),
+        );
+      } else {
+        // This catches the '500' or 'error' message from Flask
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Server Error: ${response['error']}"), backgroundColor: Colors.red),
+        );
+      }
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Connection Timeout: Check if Flask is running"), backgroundColor: Colors.orange),
+    );
+  } finally {
+    // This stops the loading spinner no matter what happens
+    if (mounted) setState(() => isLoading = false);
+  }
+}
+
   void _showClockDialog() {
     showDialog(
       context: context,

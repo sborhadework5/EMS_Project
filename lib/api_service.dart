@@ -51,4 +51,16 @@ class ApiService {
       return {"error": "Connection failed: $e"};
     }
   }
+
+  Future<void> updateLiveLocation(String uid, double lat, double lng) async {
+    try {
+      await http.post(
+        Uri.parse('$baseUrl/user/update_location'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"uid": uid, "latitude": lat, "longitude": lng}),
+      );
+    } catch (e) {
+      print("Location update failed: $e");
+    }
+  }
 }

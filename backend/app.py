@@ -59,21 +59,23 @@ def get_user_stats(uid):
 
 
 
-# app.py update
 @app.route('/attendance/clock', methods=['POST'])
 def clock_in_out():
     try:
         data = request.json
         uid = data.get('uid')
-        action = data.get('action') # 'in' or 'out'
+        action = data.get('action') 
         
+        if not uid or not action:
+            return jsonify({"error": "Missing UID or Action"}), 400
+
         # Reference to the user's document
         user_ref = db.collection('users').document(uid)
         
         # Add to attendance collection
         db.collection('attendance').add({
-            'user_id': user_ref, # Storing as a DocumentReference
-            'uid': uid,
+            'user_id': user_ref, 
+            'uid': uid,            # This MUST be a string for Flutter to query it
             'timestamp': firestore.SERVER_TIMESTAMP,
             'type': action,
             'status': 'Present' if action == 'in' else 'Completed'
@@ -82,7 +84,41 @@ def clock_in_out():
         return jsonify({"message": f"Successfully clocked {action}"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@app.route('/user/update_location', methods=['POST'])
 
+@app.route('/user/update_location', methods=['POST'])
+def update_location():
+    try:
+        data = request.json
+        uid = data.get('uid')
+        # Force conversion to float to prevent Firestore errors
+        lat = float(data.get('latitude'))
+        lng = float(data.get('longitude'))
 
+        if not uid:
+            return jsonify({"error": "UID is missing"}), 400
+
+        user_ref = db.collection('users').document(uid)
+        user_ref.update({
+            'last_location': {
+                'lat': lat,
+                'lng': lng,
+                'last_updated': firestore.SERVER_TIMESTAMP
+            }
+        })
+
+        # 2. Add to History Collection
+        db.collection('location_history').add({
+            'uid': uid,
+            'location': firestore.GeoPoint(lat, lng), # Must be floats!
+            'timestamp': firestore.SERVER_TIMESTAMP
+        })
+        print(f"DEBUG: Location saved for {uid}")
+        return jsonify({"message": "Location updated"}), 200
+    except Exception as e:
+        print(f"BACKEND CRASH: {str(e)}") # Check your Python terminal for this!
+        return jsonify({"error": str(e)}), 500
+    
+    
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
