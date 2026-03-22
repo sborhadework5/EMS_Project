@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 
 class ApiService {
   // Use 10.0.2.2 if using Android Emulator, or your PC's IP for physical devices
-  final String baseUrl = "https://triaryl-mozell-technically.ngrok-free.dev";
+  final String baseUrl = "https://ems-project-pvxd.onrender.com";
 
   Future<Map<String, dynamic>> fetchHomeData() async {
     try {
