@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'dart:io';
 import 'package:ems_project/screens/action_pages.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,8 +7,96 @@ import 'package:firebase_auth/firebase_auth.dart';
 // import 'package:workmanager/workmanager.dart';
 import 'package:geolocator/geolocator.dart';
 import '../api_service.dart'; // Ensure this path is correct
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 Timer? _locationTimer;
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'EMS Project',
+      theme: ThemeData(primarySwatch: Colors.indigo, useMaterial3: true),
+      // This tells the app to load HomePage first
+      home: const HomePage(),
+    );
+  }
+}
+
+Future<void> initializeService() async {
+  final service = FlutterBackgroundService();
+
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: onStart,
+      autoStart: true,
+      isForegroundMode: true,
+      // Use a default channel ID that doesn't require manual setup
+      notificationChannelId: 'my_foreground',
+      initialNotificationTitle: 'EMS System',
+      initialNotificationContent: 'Tracking active...',
+      foregroundServiceTypes: [AndroidForegroundType.location], // ADD THIS
+    ),
+    iosConfiguration: IosConfiguration(
+      autoStart: true,
+      onForeground: onStart,
+      onBackground: onIosBackground,
+    ),
+  );
+}
+
+// 2. The Logic (MUST be a Top-Level function)
+@pragma('vm:entry-point')
+void onStart(ServiceInstance service) async {
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp();
+  }
+  await Firebase.initializeApp();
+  final ApiService apiService = ApiService();
+
+  if (service is AndroidServiceInstance) {
+    // This tells Android this is a "Location" category service
+    service.setAsForegroundService();
+
+    // Optional: Update the notification text dynamically
+    service.on('setAsForeground').listen((event) {
+      service.setAsForegroundService();
+    });
+  }
+
+  Timer.periodic(const Duration(seconds: 60), (timer) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      // Use a slightly lower accuracy or longer timeout to prevent the "Binding" crash
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 20),
+      );
+
+      await apiService.updateLiveLocation(
+        user.uid,
+        position.latitude,
+        position.longitude,
+      );
+
+      service.invoke('update');
+    } catch (e) {
+      debugPrint("Background Sync Error: $e");
+    }
+  });
+}
+
+@pragma('vm:entry-point')
+bool onIosBackground(ServiceInstance service) {
+  return true;
+}
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -23,6 +111,7 @@ class _HomePageState extends State<HomePage> {
   String attendance = "...";
   String leaves = "...";
   bool isLoading = true;
+  String distanceDisplay = "0.00 km";
 
   @override
   void initState() {
@@ -30,6 +119,44 @@ class _HomePageState extends State<HomePage> {
     _fetchUserData();
     _checkCurrentClockStatus();
     _startLiveTracking();
+    _listenToBackgroundUpdates(); // Add this
+    _requestPermissions();
+    _getCurrentLocationOnce();
+  }
+
+  Future<void> _getCurrentLocationOnce() async {
+    Position position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+    _sendLocationToBackend(position);
+  }
+
+  void _listenToBackgroundUpdates() {
+    FlutterBackgroundService().on('update').listen((event) {
+      if (mounted) {
+        _fetchUserData(); // This pulls the fresh 'total_distance_today' from Firestore
+      }
+    });
+  }
+
+  Future<void> _requestPermissions() async {
+    // 1. Request Notification Permission (Crucial for Android 13+)
+    if (Platform.isAndroid) {
+      var notifyStatus = await Permission.notification.status;
+      if (!notifyStatus.isGranted) {
+        await Permission.notification.request();
+      }
+    }
+
+    // 2. Request Location Permissions
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.whileInUse) {
+      await Permission.locationAlways.request();
+    }
   }
 
   @override
@@ -39,82 +166,79 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _startLiveTracking() {
-    // 1. Initial hit
-    _sendLocationToBackend();
+    // Define settings for background behavior
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10, // Only trigger if moved 10 meters
+    );
 
-    // 2. Repeat every 15 minutes
-    _locationTimer = Timer.periodic(const Duration(minutes: 15), (timer) {
-      _sendLocationToBackend();
-    });
+    Geolocator.getPositionStream(locationSettings: locationSettings).listen((
+      Position position,
+    ) {
+      _sendLocationToBackend(position);
+    }, onError: (e) => print("Stream Error: $e"));
   }
 
-  Future<void> _sendLocationToBackend() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
+  Future<void> _sendLocationToBackend(Position position) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-      // Check permissions
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
+    await ApiService().updateLiveLocation(
+      user.uid,
+      position.latitude,
+      position.longitude,
+    );
 
-      if (permission == LocationPermission.whileInUse ||
-          permission == LocationPermission.always) {
-        Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-        );
-
-        // Hit your Flask API
-        await ApiService().updateLiveLocation(
-          user.uid,
-          position.latitude,
-          position.longitude,
-        );
-        print(
-          "Location synced to Flask: ${position.latitude}, ${position.longitude}",
-        );
-      }
-    } catch (e) {
-      print("Location tracking error: $e");
-    }
+    // Refresh UI
+    _fetchUserData();
   }
 
   Future<void> _fetchUserData() async {
     if (!mounted) return;
-    setState(() => isLoading = true);
+
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() => isLoading = false);
+      return; // Stop here if user isn't fully loaded yet
+    }
 
     try {
       User? user = FirebaseAuth.instance.currentUser;
       if (user != null) {
+        // 1. Get Distance directly from Firestore (Most Reliable)
         DocumentSnapshot userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
-            .get();
+            .get(const GetOptions(source: Source.server));
 
+        // 2. Get Stats from Flask
         Map<String, dynamic> response = {};
         try {
-          response = await ApiService()
-              .fetchUserStats(user.uid)
-              .timeout(const Duration(seconds: 4));
+          response = await ApiService().fetchUserStats(user.uid);
         } catch (e) {
-          print("Backend stats unreachable: $e");
+          print("API Error: $e");
         }
 
         if (userDoc.exists && mounted) {
           final data = userDoc.data() as Map<String, dynamic>;
           setState(() {
-            // Check BOTH keys to be safe
-            userName = data['full_name'] ?? "User";
+            // Check if your Firestore field name matches: 'full_name' or 'name'
+            userName = data['full_name'] ?? data['name'] ?? "User";
             role = data['role'] ?? "Employee";
+
+            // Calculate distance
+            double dist = (data['total_distance_today'] ?? 0.0).toDouble();
+            distanceDisplay = "${dist.toStringAsFixed(2)} km";
+
+            // Calculate Attendance (ensure Flask returns 'attendance_rate')
             attendance = response['attendance_rate'] ?? "0%";
             leaves = response['leaves_taken'] ?? "0";
+            isLoading = false; // Turn off spinner here
           });
         }
       }
     } catch (e) {
       print("UI Sync Error: $e");
-    } finally {
       if (mounted) setState(() => isLoading = false);
     }
   }
@@ -203,16 +327,26 @@ class _HomePageState extends State<HomePage> {
   Widget _buildSummaryStats() {
     return Padding(
       padding: const EdgeInsets.all(20.0),
-      child: Row(
+      child: Column(
+        // Changed to column to add a second row if needed
         children: [
-          _statCard(
-            "Attendance",
-            attendance,
-            Icons.calendar_today,
-            Colors.orange,
+          Row(
+            children: [
+              _statCard(
+                "Attendance",
+                attendance,
+                Icons.calendar_today,
+                Colors.orange,
+              ),
+              const SizedBox(width: 15),
+              _statCard(
+                "Travelled",
+                distanceDisplay,
+                Icons.directions_walk,
+                Colors.blue,
+              ),
+            ],
           ),
-          const SizedBox(width: 15),
-          _statCard("Leaves", leaves, Icons.beach_access, Colors.green),
         ],
       ),
     );
@@ -364,40 +498,51 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _handleClockInOut() async {
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-  String action = isClockedIn ? "out" : "in";
-  setState(() => isLoading = true); // This starts the loading spinner
+    bool previousState = isClockedIn;
+    String action = isClockedIn ? "out" : "in";
 
-  try {
-    // We add a timeout so the app doesn't spin forever if the server is slow
-    final response = await ApiService().clockInOut(user.uid, action).timeout(
-      const Duration(seconds: 10),
-    );
+    // 1. INSTANT UI FEEDBACK
+    setState(() => isClockedIn = !isClockedIn);
 
-    if (mounted) {
-      if (response.containsKey('message')) {
-        setState(() => isClockedIn = !isClockedIn);
+    try {
+      // 2. ULTRA-FAST WRITE (Direct to Firebase)
+      // This bypasses the Flask "middle-man" for the log entry
+      await FirebaseFirestore.instance.collection('attendance').add({
+        'uid': user.uid,
+        'timestamp': FieldValue.serverTimestamp(),
+        'type': action,
+        'status': action == 'in' ? 'Present' : 'Completed',
+      });
+
+      // 3. BACKGROUND API HIT (Optional)
+      // Only use this if your Flask backend sends emails/notifications
+      // ApiService().clockInOut(user.uid, action);
+
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(response['message']), backgroundColor: Colors.green),
+          SnackBar(
+            content: Text("Successfully clocked $action"),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 1),
+          ),
         );
-      } else {
-        // This catches the '500' or 'error' message from Flask
+      }
+    } catch (e) {
+      // 4. ROLLBACK ON FAILURE
+      if (mounted) {
+        setState(() => isClockedIn = previousState);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Server Error: ${response['error']}"), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text("Offline: Could not clock $action"),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Connection Timeout: Check if Flask is running"), backgroundColor: Colors.orange),
-    );
-  } finally {
-    // This stops the loading spinner no matter what happens
-    if (mounted) setState(() => isLoading = false);
   }
-}
 
   void _showClockDialog() {
     showDialog(

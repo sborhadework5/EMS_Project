@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
   // Use 10.0.2.2 if using Android Emulator, or your PC's IP for physical devices
-  final String baseUrl = "http://192.168.1.118:5000";
+  final String baseUrl = "https://triaryl-mozell-technically.ngrok-free.dev";
 
   Future<Map<String, dynamic>> fetchHomeData() async {
     try {
@@ -19,48 +20,59 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> fetchUserStats(String uid) async {
-    try {
-      final response = await http.get(Uri.parse('$baseUrl/user/stats/$uid'));
-      if (response.statusCode == 200) {
-        // Use 'as Map<String, dynamic>' to tell Dart exactly what this is
-        return json.decode(response.body) as Map<String, dynamic>;
-      }
-      return {};
-    } catch (e) {
-      return {};
+    final response = await http.get(Uri.parse('$baseUrl/user/stats/$uid'));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
     }
+    return {};
   }
 
   Future<Map<String, dynamic>> clockInOut(String uid, String action) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/attendance/clock'),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "uid": uid,
-          "action": action, // 'in' or 'out'
-        }),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/attendance/clock'),
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({"uid": uid, "action": action}),
+          )
+          .timeout(
+            const Duration(seconds: 5),
+          ); // Lower timeout for snappier feedback
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
-        return {"error": "Server returned ${response.statusCode}"};
+        return {"error": "Server error: ${response.statusCode}"};
       }
+    } on TimeoutException {
+      return {"error": "Connection timed out. Syncing in background..."};
     } catch (e) {
       return {"error": "Connection failed: $e"};
     }
   }
 
-  Future<void> updateLiveLocation(String uid, double lat, double lng) async {
+  // Change 'Future<void>' to 'Future<Map<String, dynamic>>'
+  Future<Map<String, dynamic>> updateLiveLocation(
+    String uid,
+    double lat,
+    double lng,
+  ) async {
     try {
-      await http.post(
+      final response = await http.post(
         Uri.parse('$baseUrl/user/update_location'),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"uid": uid, "latitude": lat, "longitude": lng}),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'uid': uid, 'latitude': lat, 'longitude': lng}),
       );
+
+      if (response.statusCode == 200) {
+        // This is the important part: returning the data from Flask
+        return jsonDecode(response.body);
+      } else {
+        return {'added': 0.0};
+      }
     } catch (e) {
-      print("Location update failed: $e");
+      print("API Error: $e");
+      return {'added': 0.0};
     }
   }
 }

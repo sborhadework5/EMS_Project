@@ -3,6 +3,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore, auth
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from geopy.distance import geodesic
 
 cred = credentials.Certificate("serviceAccountKey.json")
 firebase_admin.initialize_app(cred)
@@ -74,7 +75,6 @@ def clock_in_out():
         
         # Add to attendance collection
         db.collection('attendance').add({
-            'user_id': user_ref, 
             'uid': uid,            # This MUST be a string for Flutter to query it
             'timestamp': firestore.SERVER_TIMESTAMP,
             'type': action,
@@ -84,41 +84,72 @@ def clock_in_out():
         return jsonify({"message": f"Successfully clocked {action}"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-@app.route('/user/update_location', methods=['POST'])
+    
+
+
+from datetime import datetime, timezone
 
 @app.route('/user/update_location', methods=['POST'])
 def update_location():
     try:
         data = request.json
         uid = data.get('uid')
-        # Force conversion to float to prevent Firestore errors
-        lat = float(data.get('latitude'))
-        lng = float(data.get('longitude'))
-
-        if not uid:
-            return jsonify({"error": "UID is missing"}), 400
+        new_lat = float(data.get('latitude'))
+        new_lng = float(data.get('longitude'))
+        new_coords = (new_lat, new_lng)
 
         user_ref = db.collection('users').document(uid)
-        user_ref.update({
-            'last_location': {
-                'lat': lat,
-                'lng': lng,
-                'last_updated': firestore.SERVER_TIMESTAMP
-            }
-        })
-
-        # 2. Add to History Collection
-        db.collection('location_history').add({
-            'uid': uid,
-            'location': firestore.GeoPoint(lat, lng), # Must be floats!
+        
+        # 1. Log to History for verification/auditing
+        user_ref.collection('location_history').add({
+            'latitude': new_lat,
+            'longitude': new_lng,
             'timestamp': firestore.SERVER_TIMESTAMP
         })
-        print(f"DEBUG: Location saved for {uid}")
-        return jsonify({"message": "Location updated"}), 200
+
+        user_doc = user_ref.get()
+        distance_increment = 0.0
+
+        if user_doc.exists:
+            user_data = user_doc.to_dict()
+            last_loc = user_data.get('last_location', {})
+            last_time = last_loc.get('last_updated')
+            
+            is_same_day = False
+            if last_time:
+                # Convert Firestore timestamp to Python datetime
+                last_dt = last_time.replace(tzinfo=timezone.utc)
+                now_dt = datetime.now(timezone.utc)
+                is_same_day = (last_dt.date() == now_dt.date())
+
+            if is_same_day and last_loc.get('lat'):
+                old_coords = (last_loc['lat'], last_loc['lng'])
+                dist_moved = geodesic(old_coords, new_coords).km
+                
+                # 0.01 km = 10 meters (Jitter filter)
+                # Also add a "Sanity Check" (e.g., if dist > 50km in 1 min, it's a GPS error)
+                if 0.01 <= dist_moved <= 5.0: 
+                    distance_increment = dist_moved
+            else:
+                # It's a new day or first-ever location! 
+                # We update the location but set increment to 0.0
+                # Optional: Reset total_distance_today to 0 in Firestore if it's a new day
+                user_ref.update({'total_distance_today': 0.0}) 
+                distance_increment = 0.0
+
+        # 2. Update Main User Doc
+        user_ref.update({
+            'last_location': {
+                'lat': new_lat,
+                'lng': new_lng,
+                'last_updated': firestore.SERVER_TIMESTAMP
+            },
+            'total_distance_today': firestore.Increment(distance_increment)
+        })
+
+        return jsonify({"status": "success", "added": distance_increment}), 200
     except Exception as e:
-        print(f"BACKEND CRASH: {str(e)}") # Check your Python terminal for this!
         return jsonify({"error": str(e)}), 500
-    
     
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
