@@ -10,6 +10,7 @@ import '../api_service.dart'; // Ensure this path is correct
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 Timer? _locationTimer;
 
@@ -31,16 +32,44 @@ class MyApp extends StatelessWidget {
 Future<void> initializeService() async {
   final service = FlutterBackgroundService();
 
+  // 1. Define the Notification Channel for Android
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    'my_foreground', // id - must match the one in AndroidConfiguration below
+    'EMS Tracking Service', // title
+    description: 'Running EMS location tracking in the background',
+    importance: Importance.high, // Required for foreground services
+  );
+
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+
+  // 2. Initialize the plugin and create the channel
+  if (Platform.isAndroid) {
+    await flutterLocalNotificationsPlugin.initialize(
+      const InitializationSettings(
+        // This tells it to just use your default Flutter app icon for the notification
+        android: AndroidInitializationSettings('ic_launcher'),
+      ),
+    );
+
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(channel);
+  }
+
+  // 3. Now configure the background service as normal
   await service.configure(
     androidConfiguration: AndroidConfiguration(
       onStart: onStart,
       autoStart: true,
       isForegroundMode: true,
-      // Use a default channel ID that doesn't require manual setup
-      notificationChannelId: 'my_foreground',
+      notificationChannelId:
+          'my_foreground', // This will now successfully find the channel we just created!
       initialNotificationTitle: 'EMS System',
       initialNotificationContent: 'Tracking active...',
-      foregroundServiceTypes: [AndroidForegroundType.location], // ADD THIS
+      foregroundServiceTypes: [AndroidForegroundType.location],
     ),
     iosConfiguration: IosConfiguration(
       autoStart: true,
