@@ -85,28 +85,22 @@ void onStart(ServiceInstance service) async {
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp();
   }
-  await Firebase.initializeApp();
   final ApiService apiService = ApiService();
 
   if (service is AndroidServiceInstance) {
-    // This tells Android this is a "Location" category service
     service.setAsForegroundService();
-
-    // Optional: Update the notification text dynamically
-    service.on('setAsForeground').listen((event) {
-      service.setAsForegroundService();
-    });
   }
 
-  Timer.periodic(const Duration(seconds: 60), (timer) async {
+  // FIXED: Set to 5 minutes (300 seconds)
+  Timer.periodic(const Duration(minutes: 5), (timer) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
     try {
-      // Use a slightly lower accuracy or longer timeout to prevent the "Binding" crash
+      // Use high accuracy but a strict timeout
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 20),
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
       );
 
       await apiService.updateLiveLocation(
@@ -115,7 +109,7 @@ void onStart(ServiceInstance service) async {
         position.longitude,
       );
 
-      service.invoke('update');
+      service.invoke('update'); // Notifies UI if app is open
     } catch (e) {
       debugPrint("Background Sync Error: $e");
     }

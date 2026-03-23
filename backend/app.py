@@ -35,15 +35,15 @@ def register_user():
             email=data['email'].strip(),
             password=data['password']
         )
-        
-        # 2. Store in Firestore
+            
+            # 2. Store in Firestore
         db.collection('users').document(user.uid).set({
             'name': data['name'],
             'email': data['email'],
             'role': 'Employee',
             'created_at': firestore.SERVER_TIMESTAMP
         })
-        
+            
         return jsonify({"message": "User registered successfully"}), 201
     except Exception as e:
         print(f"Error occurred: {e}") # This will show in your terminal!
@@ -55,7 +55,7 @@ def get_user_stats(uid):
         # Fetching attendance and leave count from Firestore
         user_ref = db.collection('users').document(uid)
         doc = user_ref.get()
-        
+            
         if not doc.exists:
             return jsonify({"error": "User not found"}), 404
 
@@ -78,13 +78,13 @@ def clock_in_out():
         data = request.json
         uid = data.get('uid')
         action = data.get('action') 
-        
+            
         if not uid or not action:
             return jsonify({"error": "Missing UID or Action"}), 400
 
         # Reference to the user's document
         user_ref = db.collection('users').document(uid)
-        
+            
         # Add to attendance collection
         db.collection('attendance').add({
             'uid': uid,            # This MUST be a string for Flutter to query it
@@ -92,11 +92,11 @@ def clock_in_out():
             'type': action,
             'status': 'Present' if action == 'in' else 'Completed'
         })
-        
+            
         return jsonify({"message": f"Successfully clocked {action}"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
+        
 
 
 from datetime import datetime, timezone
@@ -111,13 +111,13 @@ def update_location():
         new_coords = (new_lat, new_lng)
 
         user_ref = db.collection('users').document(uid)
-        
+            
         # 1. Log to History for verification/auditing
         user_ref.collection('location_history').add({
-            'latitude': new_lat,
-            'longitude': new_lng,
-            'timestamp': firestore.SERVER_TIMESTAMP
-        })
+                'latitude': new_lat,
+                'longitude': new_lng,
+                'timestamp': firestore.SERVER_TIMESTAMP
+            })
 
         user_doc = user_ref.get()
         distance_increment = 0.0
@@ -126,7 +126,7 @@ def update_location():
             user_data = user_doc.to_dict()
             last_loc = user_data.get('last_location', {})
             last_time = last_loc.get('last_updated')
-            
+                
             is_same_day = False
             if last_time:
                 # Convert Firestore timestamp to Python datetime
@@ -137,7 +137,7 @@ def update_location():
             if is_same_day and last_loc.get('lat'):
                 old_coords = (last_loc['lat'], last_loc['lng'])
                 dist_moved = geodesic(old_coords, new_coords).km
-                
+                    
                 # 0.01 km = 10 meters (Jitter filter)
                 # Also add a "Sanity Check" (e.g., if dist > 50km in 1 min, it's a GPS error)
                 if 0.01 <= dist_moved <= 5.0: 
@@ -149,7 +149,7 @@ def update_location():
                 user_ref.update({'total_distance_today': 0.0}) 
                 distance_increment = 0.0
 
-        # 2. Update Main User Doc
+            # 2. Update Main User Doc
         user_ref.update({
             'last_location': {
                 'lat': new_lat,
@@ -162,8 +162,8 @@ def update_location():
         return jsonify({"status": "success", "added": distance_increment}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
+        
 if __name__ == '__main__':
-    # Cloud Run provides a port, or we default to 8080 locally
+        # Cloud Run provides a port, or we default to 8080 locally
     port = int(os.environ.get('PORT', 8080))
     app.run(debug=False, host='0.0.0.0', port=port)
