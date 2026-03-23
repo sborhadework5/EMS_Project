@@ -111,6 +111,9 @@ def update_location():
         new_coords = (new_lat, new_lng)
 
         user_ref = db.collection('users').document(uid)
+        user_doc = user_ref.get()
+        distance_increment = 0.0
+        now_dt = datetime.now(timezone.utc)
             
         # 1. Log to History for verification/auditing
         user_ref.collection('location_history').add({
@@ -119,8 +122,8 @@ def update_location():
                 'timestamp': firestore.SERVER_TIMESTAMP
             })
 
-        user_doc = user_ref.get()
-        distance_increment = 0.0
+        
+        
 
         if user_doc.exists:
             user_data = user_doc.to_dict()
@@ -130,24 +133,22 @@ def update_location():
             is_same_day = False
             if last_time:
                 # Convert Firestore timestamp to Python datetime
-                last_dt = last_time.replace(tzinfo=timezone.utc)
-                now_dt = datetime.now(timezone.utc)
-                is_same_day = (last_dt.date() == now_dt.date())
+                # last_dt = last_time.replace(tzinfo=timezone.utc)
+                # now_dt = datetime.now(timezone.utc)
+                is_same_day = (last_time.date() == now_dt.date())
 
-            if is_same_day and last_loc.get('lat'):
-                old_coords = (last_loc['lat'], last_loc['lng'])
-                dist_moved = geodesic(old_coords, new_coords).km
+            if is_same_day:
+                if last_loc.get('lat'):
+                    old_coords = (last_loc['lat'], last_loc['lng'])
+                    dist_moved = geodesic(old_coords, new_coords).km
                     
-                # 0.01 km = 10 meters (Jitter filter)
-                # Also add a "Sanity Check" (e.g., if dist > 50km in 1 min, it's a GPS error)
-                if 0.01 <= dist_moved <= 5.0: 
-                    distance_increment = dist_moved
+                    # 2. Filter Jitter: Only count if moved more than 25 meters
+                    # and less than 3km (to avoid huge "teleportation" jumps)
+                    if 0.025 <= dist_moved <= 3.0: 
+                        distance_increment = dist_moved
             else:
-                # It's a new day or first-ever location! 
-                # We update the location but set increment to 0.0
-                # Optional: Reset total_distance_today to 0 in Firestore if it's a new day
-                user_ref.update({'total_distance_today': 0.0}) 
-                distance_increment = 0.0
+                # Reset for the new day
+                user_ref.update({'total_distance_today': 0.0})
 
             # 2. Update Main User Doc
         user_ref.update({

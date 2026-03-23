@@ -32,43 +32,28 @@ class MyApp extends StatelessWidget {
 Future<void> initializeService() async {
   final service = FlutterBackgroundService();
 
-  // 1. Define the Notification Channel for Android
   const AndroidNotificationChannel channel = AndroidNotificationChannel(
-    'my_foreground', // id - must match the one in AndroidConfiguration below
-    'EMS Tracking Service', // title
-    description: 'Running EMS location tracking in the background',
-    importance: Importance.high, // Required for foreground services
+    'ems_tracking_channel', // ID
+    'EMS Live Tracking',    // Title
+    description: 'This channel is used for persistent location tracking.',
+    importance: Importance.high, 
   );
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  // 2. Initialize the plugin and create the channel
-  if (Platform.isAndroid) {
-    await flutterLocalNotificationsPlugin.initialize(
-      const InitializationSettings(
-        // This tells it to just use your default Flutter app icon for the notification
-        android: AndroidInitializationSettings('ic_launcher'),
-      ),
-    );
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
 
-    await flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.createNotificationChannel(channel);
-  }
-
-  // 3. Now configure the background service as normal
   await service.configure(
     androidConfiguration: AndroidConfiguration(
       onStart: onStart,
       autoStart: true,
-      isForegroundMode: true,
-      notificationChannelId:
-          'my_foreground', // This will now successfully find the channel we just created!
-      initialNotificationTitle: 'EMS System',
-      initialNotificationContent: 'Tracking active...',
+      isForegroundMode: true, // THIS keeps the app alive
+      notificationChannelId: 'ems_tracking_channel',
+      initialNotificationTitle: 'EMS Tracking Active',
+      initialNotificationContent: 'Initializing location services...',
       foregroundServiceTypes: [AndroidForegroundType.location],
     ),
     iosConfiguration: IosConfiguration(
@@ -89,6 +74,10 @@ void onStart(ServiceInstance service) async {
 
   if (service is AndroidServiceInstance) {
     service.setAsForegroundService();
+    service.setForegroundNotificationInfo(
+      title: "EMS Tracking Active",
+      content: "Your distance is being recorded...",
+    );
   }
 
   // FIXED: Set to 5 minutes (300 seconds)
@@ -103,13 +92,25 @@ void onStart(ServiceInstance service) async {
         timeLimit: const Duration(seconds: 15),
       );
 
-      await apiService.updateLiveLocation(
+      final result = await apiService.updateLiveLocation(
         user.uid,
         position.latitude,
         position.longitude,
       );
 
+      if (service is AndroidServiceInstance) {
+        if (await service.isForegroundService()) {
+          // You can pass the updated distance from your Flask response here
+          double added = result['added'] ?? 0.0; 
+          service.setForegroundNotificationInfo(
+            title: "EMS Tracking: ACTIVE",
+            content: "Last sync successful. Tracking your work travel...",
+          );
+        }
+      }
+
       service.invoke('update'); // Notifies UI if app is open
+      
     } catch (e) {
       debugPrint("Background Sync Error: $e");
     }
