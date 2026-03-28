@@ -11,6 +11,8 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart' show kIsWeb; // Add this import
+import 'package:ems_project/screens/admin/admin_home.dart'; // Adjust 'ems_project' to your actual project name
 
 Timer? _locationTimer;
 
@@ -34,16 +36,18 @@ Future<void> initializeService() async {
 
   const AndroidNotificationChannel channel = AndroidNotificationChannel(
     'ems_tracking_channel', // ID
-    'EMS Live Tracking',    // Title
+    'EMS Live Tracking', // Title
     description: 'This channel is used for persistent location tracking.',
-    importance: Importance.high, 
+    importance: Importance.high,
   );
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
   await flutterLocalNotificationsPlugin
-      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >()
       ?.createNotificationChannel(channel);
 
   await service.configure(
@@ -101,7 +105,7 @@ void onStart(ServiceInstance service) async {
       if (service is AndroidServiceInstance) {
         if (await service.isForegroundService()) {
           // You can pass the updated distance from your Flask response here
-          double added = result['added'] ?? 0.0; 
+          double added = result['added'] ?? 0.0;
           service.setForegroundNotificationInfo(
             title: "EMS Tracking: ACTIVE",
             content: "Last sync successful. Tracking your work travel...",
@@ -110,7 +114,6 @@ void onStart(ServiceInstance service) async {
       }
 
       service.invoke('update'); // Notifies UI if app is open
-      
     } catch (e) {
       debugPrint("Background Sync Error: $e");
     }
@@ -142,10 +145,16 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _fetchUserData();
     _checkCurrentClockStatus();
-    _startLiveTracking();
-    _listenToBackgroundUpdates(); // Add this
+    if (!kIsWeb) {
+      _startLiveTracking();
+      _listenToBackgroundUpdates();
+      _getCurrentLocationOnce();
+    } else {
+      // Optional: On Web, you can use a simple timer to refresh data
+      // since background services don't exist.
+      Timer.periodic(const Duration(minutes: 5), (timer) => _fetchUserData());
+    }
     _requestPermissions();
-    _getCurrentLocationOnce();
   }
 
   Future<void> _getCurrentLocationOnce() async {
@@ -269,6 +278,13 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading)
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
+    // REPLACED: Point to the new Admin Hub instead of just the list
+    if (kIsWeb && role.toLowerCase() == 'admin') {
+      return const AdminHomePage();
+    }
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(

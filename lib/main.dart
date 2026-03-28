@@ -5,6 +5,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
 import 'screens/home.dart'; // Ensure initializeService is exported from here
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,15 +14,17 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Check if service is already running before initializing
-  final service = FlutterBackgroundService();
-  bool isRunning = await service.isRunning();
-  
-  if (!isRunning) {
-    try {
-      await initializeService(); 
-    } catch (e) {
-      debugPrint("Service already active or failed: $e");
+  // ONLY run background services if NOT on Web
+  if (!kIsWeb) {
+    final service = FlutterBackgroundService();
+    bool isRunning = await service.isRunning();
+    
+    if (!isRunning) {
+      try {
+        await initializeService(); 
+      } catch (e) {
+        debugPrint("Service already active or failed: $e");
+      }
     }
   }
   

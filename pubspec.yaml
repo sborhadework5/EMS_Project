@@ -42,6 +42,8 @@ dependencies:
   permission_handler: ^11.3.0
   http: ^1.2.1
   flutter_local_notifications: ^17.1.2
+  data_table_2: ^2.7.2
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
