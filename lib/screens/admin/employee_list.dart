@@ -2,6 +2,7 @@ import 'package:data_table_2/data_table_2.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ems_project/screens/admin/employee_details.dart';
+import 'package:ems_project/screens/admin/add_employee.dart';
 
 class EmployeeListPage extends StatefulWidget {
   const EmployeeListPage({super.key});
@@ -18,6 +19,16 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Employee Directory"),
+        backgroundColor: Colors.indigo[800],
+        foregroundColor: Colors.white,
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => Navigator.push(
+          context, 
+          MaterialPageRoute(builder: (context) =>  AddEmployeePage())
+        ),
+        label: const Text("Add Employee"),
+        icon: const Icon(Icons.add),
         backgroundColor: Colors.indigo[800],
         foregroundColor: Colors.white,
       ),
@@ -61,7 +72,9 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
                       DataColumn2(label: Text('Dept')),
                       DataColumn2(label: Text('View'), fixedWidth: 80),
                     ],
-                    rows: docs.map((doc) {
+                    rows: docs.asMap().entries.map((entry) {
+                      int index = entry.key; // This gives you the index
+                      var doc = entry.value; // This is the document
                       final data = doc.data() as Map<String, dynamic>;
                       return DataRow(cells: [
                         DataCell(Text(data['emp_id'] ?? '-')),
@@ -75,7 +88,10 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => EmployeeDetailsPage(data: data),
+                                  builder: (context) => EmployeeDetailsPage(
+                                    data: data, 
+                                    docId: docs[index].id, // THIS IS KEY
+                                  ),
                                 ),
                               );
                             },

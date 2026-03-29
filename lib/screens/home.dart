@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:io' show Platform;
 import 'package:ems_project/screens/action_pages.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -174,7 +174,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _requestPermissions() async {
     // 1. Request Notification Permission (Crucial for Android 13+)
-    if (Platform.isAndroid) {
+    if (!kIsWeb && Platform.isAndroid) {
       var notifyStatus = await Permission.notification.status;
       if (!notifyStatus.isGranted) {
         await Permission.notification.request();

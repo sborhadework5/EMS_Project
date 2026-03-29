@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:ems_project/screens/admin/add_employee.dart';
 import 'package:ems_project/screens/admin/employee_list.dart'; // Correct Page for Directory
+import 'package:ems_project/screens/admin/attendance_list.dart'; // Ensure correct path
 
 class AdminHomePage extends StatelessWidget {
   const AdminHomePage({super.key});
@@ -16,11 +17,8 @@ class AdminHomePage extends StatelessWidget {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout), 
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-              // No need to pop if your main.dart is using a StreamBuilder for Auth
-            },
+            icon: const Icon(Icons.logout),
+            onPressed: () => FirebaseAuth.instance.signOut(),
           ),
         ],
       ),
@@ -40,19 +38,11 @@ class AdminHomePage extends StatelessWidget {
                 children: [
                   _buildMenuCard(
                     context, 
-                    "Add New Employee", 
-                    "Onboard staff & set passwords", 
-                    Icons.person_add, 
-                    Colors.blue, 
-                    const AddEmployeePage()
-                  ),
-                  _buildMenuCard(
-                    context, 
                     "Employee Directory", 
-                    "Live location, status & edits", 
+                    "Manage staff, edits & deletion", // Updated subtitle
                     Icons.badge, 
                     Colors.orange, 
-                    const EmployeeListPage() // FIXED: Point to List Page
+                    const EmployeeListPage() 
                   ),
                   _buildMenuCard(
                     context, 
@@ -60,7 +50,7 @@ class AdminHomePage extends StatelessWidget {
                     "Check daily logs & history", 
                     Icons.analytics, 
                     Colors.green, 
-                    const Scaffold(body: Center(child: Text("Reports Module Coming Soon"))) 
+                    const AttendanceListPage() 
                   ),
                 ],
               ),

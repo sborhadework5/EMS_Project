@@ -19,6 +19,7 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
 
   String _dept = 'IT';
   String _designation = 'Junior Associate';
+  String _selectedRole = 'employee';
 
   Future<void> _saveEmployee() async {
     if (_formKey.currentState!.validate()) {
@@ -70,6 +71,20 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                 items: ['IT', 'HR', 'Finance', 'Sales'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (val) => setState(() => _dept = val as String),
               ),
+              const SizedBox(height: 15), // Spacing
+              DropdownButtonFormField<String>(
+                value: _selectedRole,
+                decoration: const InputDecoration(
+                  labelText: "User Role", 
+                  prefixIcon: Icon(Icons.admin_panel_settings),
+                  border: OutlineInputBorder()
+                ),
+                items: ['admin', 'manager', 'employee'].map((role) => DropdownMenuItem(
+                  value: role, 
+                  child: Text(role.toUpperCase())
+                )).toList(),
+                onChanged: (val) => setState(() => _selectedRole = val!),
+              ),
               const SizedBox(height: 30),
               SizedBox(
                 width: double.infinity,
@@ -80,6 +95,7 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                   child: const Text("SAVE TO DATABASE"),
                 ),
               )
+              
             ],
           ),
         ),
