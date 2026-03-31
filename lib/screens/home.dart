@@ -173,15 +173,21 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _requestPermissions() async {
-    // 1. Request Notification Permission (Crucial for Android 13+)
-    if (!kIsWeb && Platform.isAndroid) {
-      var notifyStatus = await Permission.notification.status;
-      if (!notifyStatus.isGranted) {
-        await Permission.notification.request();
+    if (kIsWeb) {
+      // Web only needs basic location permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        await Geolocator.requestPermission();
       }
+      return; // Exit early for web
     }
 
-    // 2. Request Location Permissions
+    // Mobile specific permissions (Background, Notifications)
+    if (Platform.isAndroid) {
+      var notifyStatus = await Permission.notification.status;
+      if (!notifyStatus.isGranted) await Permission.notification.request();
+    }
+
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:ems_project/api_service.dart';
 
 class AddEmployeePage extends StatefulWidget {
   const AddEmployeePage({super.key});
@@ -21,9 +22,17 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
   String _designation = 'Junior Associate';
   String _selectedRole = 'employee';
 
+  bool _isLoading = false;
+
   Future<void> _saveEmployee() async {
     if (_formKey.currentState!.validate()) {
+      setState(() => _isLoading = true);
       try {
+        final response = await ApiService().registerUser(
+          name: _nameController.text.trim(),
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
         await FirebaseFirestore.instance.collection('users').add({
           'emp_id': _idController.text.trim(),
           'full_name': _nameController.text.trim(),
@@ -39,12 +48,16 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
           'total_distance_today': 0.0,
           'created_at': FieldValue.serverTimestamp(),
         });
+        if (!mounted) return;
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Employee Created Successfully!"), backgroundColor: Colors.green),
         );
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+      finally {
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }
