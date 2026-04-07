@@ -47,7 +47,7 @@ class EmployeeDetailsPage extends StatelessWidget {
     
     // State variables for dropdowns (using StatefulBuilder inside showDialog)
     String selectedDept = data['department'] ?? 'IT';
-    String selectedRole = data['role'] ?? 'employee';
+    String selectedRole = (data['role'] ?? 'employee').toString().toLowerCase();
     String selectedStatus = data['status'] ?? 'active';
 
     showDialog(
@@ -169,14 +169,24 @@ class EmployeeDetailsPage extends StatelessWidget {
 
   // Helper for Dropdowns in Modal
   Widget _buildDropdown(String label, String value, List<String> items, Function(String?) onChanged) {
+    // 1. Force everything to lowercase for a perfect match
+    String lowercaseValue = value.toLowerCase();
+    List<String> lowercaseItems = items.map((e) => e.toLowerCase()).toList();
+
+    // 2. Safety Check: If the value isn't in the list, default to the first item
+    String effectiveValue = lowercaseItems.contains(lowercaseValue) ? lowercaseValue : lowercaseItems.first;
+
     return DropdownButtonFormField<String>(
-      value: value,
+      value: effectiveValue,
       decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
-      items: items.map((e) => DropdownMenuItem(value: e, child: Text(e.toUpperCase()))).toList(),
+      items: lowercaseItems.map((e) => DropdownMenuItem(
+        value: e,
+        child: Text(e.toUpperCase()), // Displayed as ADMIN, EMPLOYEE, etc.
+      )).toList(),
       onChanged: onChanged,
     );
   }
-
+  
   Widget _infoTile(String title, String? value, IconData icon) {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),

@@ -28,35 +28,57 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       try {
-        final response = await ApiService().registerUser(
+        // 1. Call API
+        final Map<String, dynamic> response = await ApiService().registerUser(
           name: _nameController.text.trim(),
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
-        await FirebaseFirestore.instance.collection('users').add({
+
+        // Log the response to debug if it fails again
+        debugPrint("Backend Response: $response");
+
+        final String? newUid = response['uid'];
+        
+        if (newUid == null || newUid.isEmpty) {
+          throw "Backend failed to return a valid UID. Please try again.";
+        }
+
+        // 2. Save to Firestore
+        await FirebaseFirestore.instance.collection('users').doc(newUid).set({
           'emp_id': _idController.text.trim(),
           'full_name': _nameController.text.trim(),
-          'email': _emailController.text.trim(),
+          'email': _emailController.text.trim().toLowerCase(),
           'phone': _phoneController.text.trim(),
-          'initial_password': _passwordController.text.trim(),
           'department': _dept,
           'designation': _designation,
           'salary': _salaryController.text.trim(),
-          'role': 'employee',
+          'role': _selectedRole,
           'status': 'active',
-          'joining_date': DateTime.now(),
+          'joining_date': FieldValue.serverTimestamp(),
           'total_distance_today': 0.0,
           'created_at': FieldValue.serverTimestamp(),
+          'last_location': {
+            'lat': 0.0,
+            'lng': 0.0,
+            'last_updated': FieldValue.serverTimestamp(),
+          },
         });
+
         if (!mounted) return;
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Employee Created Successfully!"), backgroundColor: Colors.green),
+          const SnackBar(content: Text("Employee added successfully!"), backgroundColor: Colors.green),
         );
+
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-      }
-      finally {
+        debugPrint("SAVE ERROR: $e");
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error: ${e.toString()}"), backgroundColor: Colors.red),
+          );
+        }
+      } finally {
         if (mounted) setState(() => _isLoading = false);
       }
     }

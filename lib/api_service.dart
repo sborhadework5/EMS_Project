@@ -35,11 +35,18 @@ class ApiService {
         }),
       );
 
-      if (response.statusCode == 201) {
-        return json.decode(response.body);
+      final responseData = json.decode(response.body);
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        // Check if UID exists in the map
+        if (responseData.containsKey('uid')) {
+          return responseData; 
+        } else {
+          throw "Server response missing UID";
+        }
       } else {
-        final errorBody = json.decode(response.body);
-        throw errorBody['error'] ?? "Failed to register user";
+        // Catch specific error messages from Flask
+        throw responseData['error'] ?? "Failed to register user";
       }
     } catch (e) {
       throw e.toString();

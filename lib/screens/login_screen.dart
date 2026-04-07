@@ -11,7 +11,7 @@ class LoginScreen extends StatelessWidget {
   LoginScreen({super.key});
 
   Future<void> _login(BuildContext context) async {
-    String email = _emailController.text.trim();
+    String email = _emailController.text.trim().toLowerCase();
     String password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
@@ -22,42 +22,35 @@ class LoginScreen extends StatelessWidget {
     }
 
     try {
-      // 1. Check Firestore first to verify the user and get their role/initial password
-      var userQuery = await FirebaseFirestore.instance
-          .collection('users')
-          .where('email', isEqualTo: email)
-          .limit(1)
-          .get();
+    // STEP 1: Sign in FIRST. This populates request.auth in Firebase.
+    UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
 
-      if (userQuery.docs.isEmpty) {
-        throw "User record not found in database.";
-      }
+    // STEP 2: Now that we are authenticated, we can safely fetch the document
+    var userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userCredential.user!.uid) // Use the UID directly, no need for 'where' query
+        .get();
 
-      var userData = userQuery.docs.first.data();
-      String role = userData['role'] ?? 'employee';
+    if (!userDoc.exists) {
+      throw "User record not found in database.";
+    }
 
-      // 2. Perform Firebase Auth Sign In
-      UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+    var userData = userDoc.data()!;
+    String role = userData['role'] ?? 'employee';
 
-      if (!context.mounted) return;
+    if (!context.mounted) return;
 
-      // 3. Logic-based Redirection
-      if (role == 'admin') {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const AdminHomePage()),
-        );
-      } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const HomePage()),
-        );
-      }
+    // STEP 3: Redirection
+    if (role == 'admin') {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const AdminHomePage()));
+    } else {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomePage()));
+    }
 
-    } on FirebaseAuthException catch (e) {
+  } on FirebaseAuthException catch (e) {
       String errorMsg = "Login Failed";
       if (e.code == 'user-not-found') errorMsg = "No user found with this email.";
       if (e.code == 'wrong-password') errorMsg = "Incorrect password.";
