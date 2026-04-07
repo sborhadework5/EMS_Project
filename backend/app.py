@@ -31,33 +31,6 @@ CORS(app, resources={
     }
 })
 
-# @app.route('/register_user', methods=['POST'])
-# def register_user():
-#     try:
-#         data = request.json
-#         # Log the data to see what is actually arriving
-#         print(f"DEBUG: Received data: {data}")
-
-#         # Check for missing fields before processing
-#         if not data.get('email') or not data.get('password'):
-#             return jsonify({"error": "Email and password are required"}), 400
-
-#         # 1. Create user in Firebase Auth
-#         user = auth.create_user(
-#             email=data['email'].strip(),
-#             password=data['password']
-#         )
-        
-#         # 2. Return the UID back to Flutter
-#         return jsonify({
-#             "message": "User registered successfully",
-#             "uid": user.uid  # THIS MUST BE SENT BACK
-#         }), 201
-
-#     except Exception as e:
-#         print(f"Error occurred: {str(e)}") 
-#         # Return the specific Firebase error (e.g., 'email already in use')
-#         return jsonify({"error": str(e)}), 400
 
 @app.route('/register_user', methods=['POST'])
 def register_user():
@@ -67,15 +40,13 @@ def register_user():
         password = data['password']
 
         try:
-            # 1. Try to create the user
             user = auth.create_user(email=email, password=password)
             print(f"Created new user: {user.uid}")
         except auth.EmailAlreadyExistsError:
-            # 2. If they exist, just get their existing UID
             user = auth.get_user_by_email(email)
             print(f"User already exists, fetched UID: {user.uid}")
 
-        return jsonify({"status": "success", "uid": user.uid}), 201
+        return jsonify({"status": "success", "uid": user.uid, "message": "User registered successfully"}), 201
 
     except Exception as e:
         print(f"Auth Error: {str(e)}")
