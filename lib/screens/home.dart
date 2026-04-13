@@ -363,7 +363,7 @@ class _HomePageState extends State<HomePage> {
           Chip(
             label: Text(role.toUpperCase()),
             backgroundColor: Colors.white24,
-            labelStyle: const TextStyle(color: Colors.white),
+            labelStyle: const TextStyle(color: Colors.black),
           ),
         ],
       ),
