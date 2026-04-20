@@ -80,7 +80,10 @@ def clock_in_out():
     try:
         data = request.json
         uid = data.get('uid')
-        action = data.get('action') 
+        action = data.get('action')
+        lat = data.get('latitude')
+        lng = data.get('longitude')
+        readable_time = data.get('datetime')
             
         if not uid or not action:
             return jsonify({"error": "Missing UID or Action"}), 400
@@ -90,10 +93,15 @@ def clock_in_out():
             
         # Add to attendance collection
         db.collection('attendance').add({
-            'uid': uid,            # This MUST be a string for Flutter to query it
-            'timestamp': firestore.SERVER_TIMESTAMP,
+            'uid': uid,
+            'timestamp': firestore.SERVER_TIMESTAMP, # Official DB time
+            'formatted_time': readable_time,         # User-readable time
             'type': action,
-            'status': 'Present' if action == 'in' else 'Completed'
+            'status': 'Present' if action == 'in' else 'Completed',
+            'location': {
+                'latitude': lat,
+                'longitude': lng
+            }
         })
             
         return jsonify({"message": f"Successfully clocked {action}"}), 200
