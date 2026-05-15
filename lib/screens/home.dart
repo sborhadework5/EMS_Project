@@ -6,13 +6,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 // import 'package:workmanager/workmanager.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:intl/intl.dart';
 import '../api_service.dart'; // Ensure this path is correct
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:permission_handler/permission_handler.dart' hide ServiceStatus;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart' show kIsWeb; // Add this import
 import 'package:ems_project/screens/admin/admin_home.dart'; // Adjust 'ems_project' to your actual project name
+import 'package:ems_project/screens/time_card_page.dart';
 
 Timer? _locationTimer;
 
@@ -71,52 +73,74 @@ Future<void> initializeService() async {
 // 2. The Logic (MUST be a Top-Level function)
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
+  // 1. Initialize Firebase for the background process
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp();
   }
+
   final ApiService apiService = ApiService();
 
+  // 2. Setup Foreground Notification (Android only)
   if (service is AndroidServiceInstance) {
     service.setAsForegroundService();
     service.setForegroundNotificationInfo(
-      title: "EMS Tracking Active",
-      content: "Your distance is being recorded...",
+      title: "EMS Live Tracking",
+      content: "Initializing location services...",
     );
   }
 
-  // FIXED: Set to 5 minutes (300 seconds)
-  Timer.periodic(const Duration(minutes: 5), (timer) async {
+  // 3. Monitor GPS Hardware Status
+  // If user turns off GPS manually, log them out and stop service
+  Geolocator.getServiceStatusStream().listen((ServiceStatus status) {
+    if (status == ServiceStatus.disabled) {
+      FirebaseAuth.instance.signOut();
+      service.invoke('forceLogout');
+      service.stopSelf();
+    }
+  });
+
+  // 4. THE STREAM: Replaces the Timer for better accuracy
+  const LocationSettings locationSettings = LocationSettings(
+    accuracy: LocationAccuracy.high,
+    distanceFilter: 20, // Trigger API update only after moving 20 meters
+  );
+
+  Geolocator.getPositionStream(locationSettings: locationSettings).listen((
+    Position position,
+  ) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
     try {
-      // Use high accuracy but a strict timeout
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 15),
-      );
-
+      // Sync real-time movement to your Flask backend
       final result = await apiService.updateLiveLocation(
         user.uid,
         position.latitude,
         position.longitude,
       );
 
+      // Update the persistent notification with live feedback
       if (service is AndroidServiceInstance) {
-        if (await service.isForegroundService()) {
-          // You can pass the updated distance from your Flask response here
-          double added = result['added'] ?? 0.0;
-          service.setForegroundNotificationInfo(
-            title: "EMS Tracking: ACTIVE",
-            content: "Last sync successful. Tracking your work travel...",
-          );
-        }
+        double added = (result['added'] ?? 0.0).toDouble();
+
+        service.setForegroundNotificationInfo(
+          title: "EMS: Tracking Active",
+          content: added > 0
+              ? "Movement detected: Tracking your work travel..."
+              : "Stationary: Location synchronized.",
+        );
       }
 
-      service.invoke('update'); // Notifies UI if app is open
+      // Notify UI to refresh stats (Distance, etc.) if app is open
+      service.invoke('update');
     } catch (e) {
       debugPrint("Background Sync Error: $e");
     }
+  }, onError: (e) => debugPrint("Location Stream Error: $e"));
+
+  // 5. Allow manual service stop from UI
+  service.on('stopService').listen((event) {
+    service.stopSelf();
   });
 }
 
@@ -148,6 +172,7 @@ class _HomePageState extends State<HomePage> {
     if (!kIsWeb) {
       _startLiveTracking();
       _listenToBackgroundUpdates();
+      _startLocationServiceListener();
       _getCurrentLocationOnce();
     } else {
       // Optional: On Web, you can use a simple timer to refresh data
@@ -155,6 +180,34 @@ class _HomePageState extends State<HomePage> {
       Timer.periodic(const Duration(minutes: 5), (timer) => _fetchUserData());
     }
     _requestPermissions();
+  }
+
+  void _startLocationServiceListener() {
+    // 1. Listen while the app is in the foreground
+    Geolocator.getServiceStatusStream().listen((ServiceStatus status) {
+      if (status == ServiceStatus.disabled) {
+        _performLogout();
+      }
+    });
+
+    // 2. Listen for the 'forceLogout' event from the background service
+    FlutterBackgroundService().on('forceLogout').listen((event) {
+      _performLogout();
+    });
+  }
+
+  void _performLogout() async {
+    await FirebaseAuth.instance.signOut();
+    if (mounted) {
+      // Navigate back to login screen (Replace 'LoginPage' with your actual class)
+      // Navigator.of(context).pushAndRemoveUntil(...)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Location disabled. You have been logged out."),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _getCurrentLocationOnce() async {
@@ -233,48 +286,57 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _fetchUserData() async {
+    bool isLocationEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!isLocationEnabled) {
+      _performLogout();
+      return;
+    }
+
     if (!mounted) return;
 
     User? user = FirebaseAuth.instance.currentUser;
+    int retryCount = 0;
+    while (user == null && retryCount < 5) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      user = FirebaseAuth.instance.currentUser;
+      retryCount++;
+    }
+
     if (user == null) {
       setState(() => isLoading = false);
       return; // Stop here if user isn't fully loaded yet
     }
 
     try {
-      User? user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        // 1. Get Distance directly from Firestore (Most Reliable)
-        DocumentSnapshot userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get(const GetOptions(source: Source.server));
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get(const GetOptions(source: Source.server));
 
-        // 2. Get Stats from Flask
-        Map<String, dynamic> response = {};
-        try {
-          response = await ApiService().fetchUserStats(user.uid);
-        } catch (e) {
-          print("API Error: $e");
-        }
+      // 2. Get Stats from Flask
+      Map<String, dynamic> response = {};
+      try {
+        response = await ApiService().fetchUserStats(user.uid);
+      } catch (e) {
+        print("API Error: $e");
+      }
 
-        if (userDoc.exists && mounted) {
-          final data = userDoc.data() as Map<String, dynamic>;
-          setState(() {
-            // Check if your Firestore field name matches: 'full_name' or 'name'
-            userName = data['full_name'] ?? data['name'] ?? "User";
-            role = data['role'] ?? "Employee";
+      if (userDoc.exists && mounted) {
+        final data = userDoc.data() as Map<String, dynamic>;
+        setState(() {
+          // Check if your Firestore field name matches: 'full_name' or 'name'
+          userName = data['full_name'] ?? data['name'] ?? "User";
+          role = data['role'] ?? "Employee";
 
-            // Calculate distance
-            double dist = (data['total_distance_today'] ?? 0.0).toDouble();
-            distanceDisplay = "${dist.toStringAsFixed(2)} km";
+          // Calculate distance
+          double dist = (data['total_distance_today'] ?? 0.0).toDouble();
+          distanceDisplay = "${dist.toStringAsFixed(2)} km";
 
-            // Calculate Attendance (ensure Flask returns 'attendance_rate')
-            attendance = response['attendance_rate'] ?? "0%";
-            leaves = response['leaves_taken'] ?? "0";
-            isLoading = false; // Turn off spinner here
-          });
-        }
+          // Calculate Attendance (ensure Flask returns 'attendance_rate')
+          attendance = response['attendance_rate'] ?? "0%";
+          leaves = response['leaves_taken'] ?? "0";
+          isLoading = false; // Turn off spinner here
+        });
       }
     } catch (e) {
       print("UI Sync Error: $e");
@@ -370,29 +432,28 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // Find this section in home.dart
   Widget _buildSummaryStats() {
     return Padding(
       padding: const EdgeInsets.all(20.0),
-      child: Column(
-        // Changed to column to add a second row if needed
+      child: Row(
+        // Changed from Column if you only have one card now
         children: [
-          Row(
-            children: [
-              _statCard(
-                "Attendance",
-                attendance,
-                Icons.calendar_today,
-                Colors.orange,
-              ),
-              const SizedBox(width: 15),
-              _statCard(
-                "Travelled",
-                distanceDisplay,
-                Icons.directions_walk,
-                Colors.blue,
-              ),
-            ],
+          _statCard(
+            "Attendance",
+            attendance,
+            Icons.calendar_today,
+            Colors.orange,
           ),
+          // REMOVE OR COMMENT OUT THE CODE BELOW:
+          /* const SizedBox(width: 15),
+        _statCard(
+          "Travelled",
+          distanceDisplay,
+          Icons.directions_walk,
+          Colors.blue,
+        ),
+        */
         ],
       ),
     );
@@ -480,6 +541,7 @@ class _HomePageState extends State<HomePage> {
     return [
       {'title': 'Clock In/Out', 'icon': Icons.timer},
       {'title': 'My Attendance', 'icon': Icons.history},
+        {'title': 'Time Card', 'icon': Icons.receipt_long},
       {'title': 'Apply Leave', 'icon': Icons.note_add},
       {'title': 'ID Card', 'icon': Icons.badge},
     ];
@@ -494,6 +556,11 @@ class _HomePageState extends State<HomePage> {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const AttendanceHistoryPage()),
+      );
+    } else if (title == 'Time Card') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const TimeCardPage()),
       );
     } else if (title == 'Apply Leave') {
       Navigator.push(
@@ -547,6 +614,14 @@ class _HomePageState extends State<HomePage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    // NEW: Capture location and time before the existing logic starts
+    Position position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+    String formattedDate = DateFormat(
+      'yyyy-MM-dd HH:mm:ss',
+    ).format(DateTime.now());
+
     bool previousState = isClockedIn;
     String action = isClockedIn ? "out" : "in";
 
@@ -555,17 +630,21 @@ class _HomePageState extends State<HomePage> {
 
     try {
       // 2. ULTRA-FAST WRITE (Direct to Firebase)
-      // This bypasses the Flask "middle-man" for the log entry
+      // Updated with location and display_time while keeping the rest same
       await FirebaseFirestore.instance.collection('attendance').add({
         'uid': user.uid,
         'timestamp': FieldValue.serverTimestamp(),
         'type': action,
         'status': action == 'in' ? 'Present' : 'Completed',
+        // Added new fields here
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'display_time': formattedDate,
       });
 
       // 3. BACKGROUND API HIT (Optional)
-      // Only use this if your Flask backend sends emails/notifications
-      // ApiService().clockInOut(user.uid, action);
+      // If you use this, you can now pass the extra data to your Flask service
+      // ApiService().clockInOut(user.uid, action, position.latitude, position.longitude, formattedDate);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

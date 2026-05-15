@@ -39,7 +39,7 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
         debugPrint("Backend Response: $response");
 
         final String? newUid = response['uid'];
-        
+
         if (newUid == null || newUid.isEmpty) {
           throw "Backend failed to return a valid UID. Please try again.";
         }
@@ -68,14 +68,19 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
         if (!mounted) return;
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Employee added successfully!"), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text("Employee added successfully!"),
+            backgroundColor: Colors.green,
+          ),
         );
-
       } catch (e) {
         debugPrint("SAVE ERROR: $e");
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Error: ${e.toString()}"), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text("Error: ${e.toString()}"),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       } finally {
@@ -88,64 +93,126 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("New Onboarding")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              _buildInput(_idController, "Employee ID", Icons.badge),
-              _buildInput(_nameController, "Full Name", Icons.person),
-              _buildInput(_emailController, "Official Email", Icons.email),
-              _buildInput(_passwordController, "Set Login Password", Icons.lock, isPass: true),
-              _buildInput(_phoneController, "Phone Number", Icons.phone),
-              _buildInput(_salaryController, "Monthly Salary", Icons.currency_rupee, isNum: true),
-              DropdownButtonFormField(
-                value: _dept,
-                decoration: const InputDecoration(labelText: "Department", border: OutlineInputBorder()),
-                items: ['IT', 'HR', 'Finance', 'Sales'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (val) => setState(() => _dept = val as String),
+      // Use a Stack to layer the loading overlay on top of the form
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  _buildInput(_idController, "Employee ID", Icons.badge),
+                  _buildInput(_nameController, "Full Name", Icons.person),
+                  _buildInput(_emailController, "Official Email", Icons.email),
+                  _buildInput(
+                    _passwordController,
+                    "Set Login Password",
+                    Icons.lock,
+                    isPass: true,
+                  ),
+                  _buildInput(_phoneController, "Phone Number", Icons.phone),
+                  _buildInput(
+                    _salaryController,
+                    "Monthly Salary",
+                    Icons.currency_rupee,
+                    isNum: true,
+                  ),
+                  DropdownButtonFormField(
+                    value: _dept,
+                    decoration: const InputDecoration(
+                      labelText: "Department",
+                      border: OutlineInputBorder(),
+                    ),
+                    items: ['IT', 'HR', 'Finance', 'Sales']
+                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                        .toList(),
+                    onChanged: (val) => setState(() => _dept = val as String),
+                  ),
+                  const SizedBox(height: 15),
+                  DropdownButtonFormField<String>(
+                    value: _selectedRole,
+                    decoration: const InputDecoration(
+                      labelText: "User Role",
+                      prefixIcon: Icon(Icons.admin_panel_settings),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: ['admin', 'manager', 'employee']
+                        .map(
+                          (role) => DropdownMenuItem(
+                            value: role,
+                            child: Text(role.toUpperCase()),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (val) => setState(() => _selectedRole = val!),
+                  ),
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.indigo,
+                        foregroundColor: Colors.white,
+                      ),
+                      // Disable button while loading
+                      onPressed: _isLoading ? null : _saveEmployee,
+                      child: const Text("SAVE TO DATABASE"),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 15), // Spacing
-              DropdownButtonFormField<String>(
-                value: _selectedRole,
-                decoration: const InputDecoration(
-                  labelText: "User Role", 
-                  prefixIcon: Icon(Icons.admin_panel_settings),
-                  border: OutlineInputBorder()
-                ),
-                items: ['admin', 'manager', 'employee'].map((role) => DropdownMenuItem(
-                  value: role, 
-                  child: Text(role.toUpperCase())
-                )).toList(),
-                onChanged: (val) => setState(() => _selectedRole = val!),
-              ),
-              const SizedBox(height: 30),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
-                  onPressed: _saveEmployee,
-                  child: const Text("SAVE TO DATABASE"),
-                ),
-              )
-              
-            ],
+            ),
           ),
-        ),
+
+          // --- LOADING OVERLAY ---
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.5), // Dims the background
+              child: const Center(
+                child: Card(
+                  elevation: 5,
+                  child: Padding(
+                    padding: EdgeInsets.all(20.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 15),
+                        Text(
+                          "Registering Employee...",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _buildInput(TextEditingController ctr, String label, IconData icon, {bool isPass = false, bool isNum = false}) {
+  Widget _buildInput(
+    TextEditingController ctr,
+    String label,
+    IconData icon, {
+    bool isPass = false,
+    bool isNum = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
       child: TextFormField(
         controller: ctr,
         obscureText: isPass,
         keyboardType: isNum ? TextInputType.number : TextInputType.text,
-        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon), border: const OutlineInputBorder()),
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+          border: const OutlineInputBorder(),
+        ),
         validator: (v) => v!.isEmpty ? "Required field" : null,
       ),
     );

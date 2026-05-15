@@ -28,6 +28,8 @@ class LoginScreen extends StatelessWidget {
       password: password,
     );
 
+    await Future.delayed(const Duration(milliseconds: 200));
+
     // STEP 2: Now that we are authenticated, we can safely fetch the document
     var userDoc = await FirebaseFirestore.instance
         .collection('users')

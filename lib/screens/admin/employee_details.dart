@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:ems_project/screens/admin/live_location_page.dart';
 
 class EmployeeDetailsPage extends StatelessWidget {
   final Map<String, dynamic> data;
   final String docId; // Required to target the specific Firestore document
 
-  const EmployeeDetailsPage({super.key, required this.data, required this.docId});
+  const EmployeeDetailsPage({
+    super.key,
+    required this.data,
+    required this.docId,
+  });
 
   // --- DELETE FUNCTION ---
   void _confirmDelete(BuildContext context) {
@@ -13,22 +18,35 @@ class EmployeeDetailsPage extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Delete Employee?"),
-        content: Text("Are you sure you want to delete ${data['full_name']}? This action cannot be undone."),
+        content: Text(
+          "Are you sure you want to delete ${data['full_name']}? This action cannot be undone.",
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("CANCEL"),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               try {
-                await FirebaseFirestore.instance.collection('users').doc(docId).delete();
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(docId)
+                    .delete();
                 Navigator.pop(context); // Close Dialog
                 Navigator.pop(context); // Go back to List Page
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Employee Deleted"), backgroundColor: Colors.red),
+                  const SnackBar(
+                    content: Text("Employee Deleted"),
+                    backgroundColor: Colors.red,
+                  ),
                 );
               } catch (e) {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text("Error: $e")));
               }
             },
             child: const Text("DELETE", style: TextStyle(color: Colors.white)),
@@ -42,9 +60,11 @@ class EmployeeDetailsPage extends StatelessWidget {
     // Initialize controllers with existing data
     final nameController = TextEditingController(text: data['full_name']);
     final phoneController = TextEditingController(text: data['phone']);
-    final salaryController = TextEditingController(text: data['salary'].toString());
+    final salaryController = TextEditingController(
+      text: data['salary'].toString(),
+    );
     final desigController = TextEditingController(text: data['designation']);
-    
+
     // State variables for dropdowns (using StatefulBuilder inside showDialog)
     String selectedDept = data['department'] ?? 'IT';
     String selectedRole = (data['role'] ?? 'employee').toString().toLowerCase();
@@ -52,7 +72,8 @@ class EmployeeDetailsPage extends StatelessWidget {
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder( // Allows dropdowns to update inside the dialog
+      builder: (context) => StatefulBuilder(
+        // Allows dropdowns to update inside the dialog
         builder: (context, setDialogState) {
           return AlertDialog(
             title: const Text("Update Employee Profile"),
@@ -63,57 +84,93 @@ class EmployeeDetailsPage extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _buildEditField(nameController, "Full Name", Icons.person),
-                    _buildEditField(phoneController, "Phone", Icons.phone, isNum: true),
-                    _buildEditField(salaryController, "Salary", Icons.currency_rupee, isNum: true),
+                    _buildEditField(
+                      phoneController,
+                      "Phone",
+                      Icons.phone,
+                      isNum: true,
+                    ),
+                    _buildEditField(
+                      salaryController,
+                      "Salary",
+                      Icons.currency_rupee,
+                      isNum: true,
+                    ),
                     _buildEditField(desigController, "Designation", Icons.work),
-                    
+
                     const SizedBox(height: 15),
-                    
+
                     // Department Dropdown
-                    _buildDropdown("Department", selectedDept, ['IT', 'HR', 'Finance', 'Sales'], (val) {
-                      setDialogState(() => selectedDept = val!);
-                    }),
-                    
+                    _buildDropdown(
+                      "Department",
+                      selectedDept,
+                      ['IT', 'HR', 'Finance', 'Sales'],
+                      (val) {
+                        setDialogState(() => selectedDept = val!);
+                      },
+                    ),
+
                     const SizedBox(height: 15),
-                    
+
                     // Role Dropdown
-                    _buildDropdown("User Role", selectedRole, ['admin', 'manager', 'employee'], (val) {
-                      setDialogState(() => selectedRole = val!);
-                    }),
+                    _buildDropdown(
+                      "User Role",
+                      selectedRole,
+                      ['admin', 'manager', 'employee'],
+                      (val) {
+                        setDialogState(() => selectedRole = val!);
+                      },
+                    ),
 
                     const SizedBox(height: 15),
 
                     // Status Dropdown
-                    _buildDropdown("Status", selectedStatus, ['active', 'inactive', 'on leave'], (val) {
-                      setDialogState(() => selectedStatus = val!);
-                    }),
+                    _buildDropdown(
+                      "Status",
+                      selectedStatus,
+                      ['active', 'inactive', 'on leave'],
+                      (val) {
+                        setDialogState(() => selectedStatus = val!);
+                      },
+                    ),
                   ],
                 ),
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("CANCEL"),
+              ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo,
+                  foregroundColor: Colors.white,
+                ),
                 onPressed: () async {
-                  await FirebaseFirestore.instance.collection('users').doc(docId).update({
-                    'full_name': nameController.text.trim(),
-                    'phone': phoneController.text.trim(),
-                    'salary': salaryController.text.trim(),
-                    'designation': desigController.text.trim(),
-                    'department': selectedDept,
-                    'role': selectedRole,
-                    'status': selectedStatus,
-                  });
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(docId)
+                      .update({
+                        'full_name': nameController.text.trim(),
+                        'phone': phoneController.text.trim(),
+                        'salary': salaryController.text.trim(),
+                        'designation': desigController.text.trim(),
+                        'department': selectedDept,
+                        'role': selectedRole,
+                        'status': selectedStatus,
+                      });
                   Navigator.pop(context);
                   Navigator.pop(context); // Return to list to see changes
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile Updated!")));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Profile Updated!")),
+                  );
                 },
                 child: const Text("SAVE CHANGES"),
               ),
             ],
           );
-        }
+        },
       ),
     );
   }
@@ -127,8 +184,27 @@ class EmployeeDetailsPage extends StatelessWidget {
         backgroundColor: Colors.indigo[800],
         foregroundColor: Colors.white,
         actions: [
-          IconButton(icon: const Icon(Icons.edit), onPressed: () => _showEditDialog(context)),
-          IconButton(icon: const Icon(Icons.delete), onPressed: () => _confirmDelete(context)),
+          IconButton(
+            icon: const Icon(Icons.location_on),
+            tooltip: "View live location",
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => LiveLocationPage(
+                  uid: docId,
+                  employeeName: data['full_name'] ?? 'Employee',
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () => _showEditDialog(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: () => _confirmDelete(context),
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -145,6 +221,7 @@ class EmployeeDetailsPage extends StatelessWidget {
             _infoTile("Designation", data['designation'], Icons.work),
             _infoTile("Salary", "₹${data['salary']}", Icons.currency_rupee),
             _infoTile("Status", data['status'], Icons.info_outline),
+            _buildLocationTile(context),
           ],
         ),
       ),
@@ -152,7 +229,12 @@ class EmployeeDetailsPage extends StatelessWidget {
   }
 
   // Helper for Input Fields in Modal
-  Widget _buildEditField(TextEditingController controller, String label, IconData icon, {bool isNum = false}) {
+  Widget _buildEditField(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    bool isNum = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
@@ -168,32 +250,117 @@ class EmployeeDetailsPage extends StatelessWidget {
   }
 
   // Helper for Dropdowns in Modal
-  Widget _buildDropdown(String label, String value, List<String> items, Function(String?) onChanged) {
+  Widget _buildDropdown(
+    String label,
+    String value,
+    List<String> items,
+    Function(String?) onChanged,
+  ) {
     // 1. Force everything to lowercase for a perfect match
     String lowercaseValue = value.toLowerCase();
     List<String> lowercaseItems = items.map((e) => e.toLowerCase()).toList();
 
     // 2. Safety Check: If the value isn't in the list, default to the first item
-    String effectiveValue = lowercaseItems.contains(lowercaseValue) ? lowercaseValue : lowercaseItems.first;
+    String effectiveValue = lowercaseItems.contains(lowercaseValue)
+        ? lowercaseValue
+        : lowercaseItems.first;
 
     return DropdownButtonFormField<String>(
       value: effectiveValue,
-      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
-      items: lowercaseItems.map((e) => DropdownMenuItem(
-        value: e,
-        child: Text(e.toUpperCase()), // Displayed as ADMIN, EMPLOYEE, etc.
-      )).toList(),
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+      ),
+      items: lowercaseItems
+          .map(
+            (e) => DropdownMenuItem(
+              value: e,
+              child: Text(
+                e.toUpperCase(),
+              ), // Displayed as ADMIN, EMPLOYEE, etc.
+            ),
+          )
+          .toList(),
       onChanged: onChanged,
     );
   }
-  
+
   Widget _infoTile(String title, String? value, IconData icon) {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
         leading: Icon(icon, color: Colors.indigo),
-        title: Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        subtitle: Text(value ?? "N/A", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black)),
+        title: Text(
+          title,
+          style: const TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+        subtitle: Text(
+          value ?? "N/A",
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationTile(BuildContext context) {
+    final lastLoc = data['last_location'] as Map<String, dynamic>?;
+    final double lat = (lastLoc?['lat'] ?? 0.0).toDouble();
+    final double lng = (lastLoc?['lng'] ?? 0.0).toDouble();
+    final bool hasLocation = !(lat == 0.0 && lng == 0.0);
+    final Timestamp? ts = lastLoc?['last_updated'] as Timestamp?;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: Icon(
+          Icons.location_on,
+          color: hasLocation ? Colors.green[700] : Colors.grey,
+        ),
+        title: const Text(
+          "Last known location",
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+        subtitle: Text(
+          hasLocation
+              ? "${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}"
+              : "No location recorded yet",
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+        ),
+        trailing: hasLocation
+            ? ElevatedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => LiveLocationPage(
+                      uid: docId,
+                      employeeName: data['full_name'] ?? 'Employee',
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.map, size: 16),
+                label: const Text("Track"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo[800],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  textStyle: const TextStyle(fontSize: 13),
+                ),
+              )
+            : Text(
+                "Offline",
+                style: TextStyle(color: Colors.grey[500], fontSize: 13),
+              ),
       ),
     );
   }

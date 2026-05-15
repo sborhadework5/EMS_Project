@@ -44,6 +44,8 @@ dependencies:
   flutter_local_notifications: ^17.1.2
   data_table_2: ^2.7.2
   url_launcher: ^6.3.2
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.1
 
 dev_dependencies:
   flutter_test:

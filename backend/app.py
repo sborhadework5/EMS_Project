@@ -6,6 +6,7 @@ from firebase_admin import credentials, firestore, auth
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from geopy.distance import geodesic
+import pytz 
 
 firebase_keys = os.environ.get('FIREBASE_CREDENTIALS')
 
@@ -119,21 +120,14 @@ def update_location():
         uid = data.get('uid')
         new_lat = float(data.get('latitude'))
         new_lng = float(data.get('longitude'))
-        new_coords = (new_lat, new_lng)
+
+        IST = pytz.timezone('Asia/Kolkata')
+        now_ist = datetime.now(IST)
 
         user_ref = db.collection('users').document(uid)
         user_doc = user_ref.get()
         distance_increment = 0.0
-        now_dt = datetime.now(timezone.utc)
             
-        # 1. Log to History for verification/auditing
-        user_ref.collection('location_history').add({
-                'latitude': new_lat,
-                'longitude': new_lng,
-                'timestamp': firestore.SERVER_TIMESTAMP
-            })
-
-        
         
 
         if user_doc.exists:
@@ -143,19 +137,17 @@ def update_location():
                 
             is_same_day = False
             if last_time:
-                # Convert Firestore timestamp to Python datetime
-                # last_dt = last_time.replace(tzinfo=timezone.utc)
-                # now_dt = datetime.now(timezone.utc)
-                is_same_day = (last_time.date() == now_dt.date())
+                last_dt_ist = last_time.astimezone(IST)
+                is_same_day = (last_dt_ist.date() == now_ist.date())
 
             if is_same_day:
                 if last_loc.get('lat'):
                     old_coords = (last_loc['lat'], last_loc['lng'])
-                    dist_moved = geodesic(old_coords, new_coords).km
+                    dist_moved = geodesic(old_coords, (new_lat, new_lng)).km
                     
                     # 2. Filter Jitter: Only count if moved more than 25 meters
                     # and less than 3km (to avoid huge "teleportation" jumps)
-                    if 0.025 <= dist_moved <= 3.0: 
+                    if 0.025 <= dist_moved <= 10.0: 
                         distance_increment = dist_moved
             else:
                 # Reset for the new day

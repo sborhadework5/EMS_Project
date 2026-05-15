@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
@@ -28,11 +29,7 @@ class ApiService {
       final response = await http.post(
         Uri.parse('$baseUrl/register_user'),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "name": name,
-          "email": email,
-          "password": password,
-        }),
+        body: jsonEncode({"name": name, "email": email, "password": password}),
       );
 
       final responseData = json.decode(response.body);
@@ -40,7 +37,7 @@ class ApiService {
       if (response.statusCode == 201 || response.statusCode == 200) {
         // Check if UID exists in the map
         if (responseData.containsKey('uid')) {
-          return responseData; 
+          return responseData;
         } else {
           throw "Server response missing UID";
         }
@@ -61,13 +58,25 @@ class ApiService {
     return {};
   }
 
-  Future<Map<String, dynamic>> clockInOut(String uid, String action) async {
+  Future<Map<String, dynamic>> clockInOut(
+    String uid,
+    String action,
+    double lat,
+    double lng,
+    String dt,
+  ) async {
     try {
       final response = await http
           .post(
             Uri.parse('$baseUrl/attendance/clock'),
             headers: {"Content-Type": "application/json"},
-            body: jsonEncode({"uid": uid, "action": action}),
+            body: jsonEncode({
+              "uid": uid,
+              "action": action,
+              "latitude": lat,
+              "longitude": lng,
+              "datetime": dt,
+            }),
           )
           .timeout(
             const Duration(seconds: 5),
@@ -92,20 +101,21 @@ class ApiService {
     double lng,
   ) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/user/update_location'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'uid': uid, 'latitude': lat, 'longitude': lng}),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/user/update_location'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'uid': uid, 'latitude': lat, 'longitude': lng}),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         // This is the important part: returning the data from Flask
         return jsonDecode(response.body);
-      } else {
-        return {'added': 0.0};
       }
+      return {'added': 0.0};
     } catch (e) {
-      print("API Error: $e");
+      debugPrint("API Error (Server likely sleeping): $e");
       return {'added': 0.0};
     }
   }

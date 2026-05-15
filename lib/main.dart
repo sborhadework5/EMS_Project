@@ -1,3 +1,4 @@
+import 'package:ems_project/auth_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -44,20 +45,7 @@ class EMSApp extends StatelessWidget {
         useMaterial3: true,
       ),
       // Auth Gate: Automatically switches between Login and Home
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (snapshot.hasData) {
-            return const HomePage();
-          }
-          return LoginScreen();
-        },
-      ),
+      home: const AuthWrapper(),
     );
   }
 }
