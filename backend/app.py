@@ -147,7 +147,7 @@ def update_location():
                     
                     # 2. Filter Jitter: Only count if moved more than 25 meters
                     # and less than 3km (to avoid huge "teleportation" jumps)
-                    if 0.025 <= dist_moved <= 10.0: 
+                    if 0.05 <= dist_moved <= 10.0: 
                         distance_increment = dist_moved
             else:
                 # Reset for the new day
