@@ -40,7 +40,10 @@ Future<void> initializeService() async {
     'ems_tracking_channel', // ID
     'EMS Live Tracking', // Title
     description: 'This channel is used for persistent location tracking.',
-    importance: Importance.high,
+    importance: Importance.low,
+    playSound: false,
+    enableVibration: false,
+    showBadge: false,
   );
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -58,8 +61,8 @@ Future<void> initializeService() async {
       autoStart: true,
       isForegroundMode: true, // THIS keeps the app alive
       notificationChannelId: 'ems_tracking_channel',
-      initialNotificationTitle: 'EMS Tracking Active',
-      initialNotificationContent: 'Initializing location services...',
+      initialNotificationTitle: 'EMS APP : Work In Progress..',
+      initialNotificationContent: ' ',
       foregroundServiceTypes: [AndroidForegroundType.location],
     ),
     iosConfiguration: IosConfiguration(
@@ -261,7 +264,7 @@ class _HomePageState extends State<HomePage> {
     // Define settings for background behavior
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 10, // Only trigger if moved 10 meters
+      distanceFilter: 100, // Only trigger if moved 10 meters
     );
 
     Geolocator.getPositionStream(locationSettings: locationSettings).listen((
@@ -541,7 +544,7 @@ class _HomePageState extends State<HomePage> {
     return [
       {'title': 'Clock In/Out', 'icon': Icons.timer},
       {'title': 'My Attendance', 'icon': Icons.history},
-        {'title': 'Time Card', 'icon': Icons.receipt_long},
+      {'title': 'Time Card', 'icon': Icons.receipt_long},
       {'title': 'Apply Leave', 'icon': Icons.note_add},
       {'title': 'ID Card', 'icon': Icons.badge},
     ];
