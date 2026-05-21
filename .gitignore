@@ -66,3 +66,7 @@ firebase-debug.log
 .gitgnore
 backend/serviceAccountKey.json
 android/app/google-services.json
+
+key.properties
+**/*.jks
+**/*.keystore
