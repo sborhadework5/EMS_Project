@@ -29,12 +29,15 @@ class AdminHomePage extends StatelessWidget {
           children: [
             const Text("Quick Management", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
-            Expanded(
+            Expanded(child: SingleChildScrollView(
               child: GridView.count(
                 // Adaptive grid: 3 columns for wide screens (Web), 2 for mobile
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
                 crossAxisCount: MediaQuery.of(context).size.width > 800 ? 3 : 2,
                 crossAxisSpacing: 20,
                 mainAxisSpacing: 20,
+                childAspectRatio: MediaQuery.of(context).size.width > 800 ? 1.2 : 1.0,
                 children: [
                   _buildMenuCard(
                     context, 
@@ -54,6 +57,7 @@ class AdminHomePage extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
             ),
           ],
         ),
