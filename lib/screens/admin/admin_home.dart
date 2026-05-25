@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:ems_project/screens/admin/add_employee.dart';
 import 'package:ems_project/screens/admin/employee_list.dart'; // Correct Page for Directory
-import 'package:ems_project/screens/admin/attendance_list.dart'; // Ensure correct path
+import 'package:ems_project/screens/admin/attendance_list.dart';
+import 'package:ems_project/screens/admin/admin_leave_page.dart'; // ← add this // Ensure correct path
 
 class AdminHomePage extends StatelessWidget {
   const AdminHomePage({super.key});
@@ -54,6 +55,14 @@ class AdminHomePage extends StatelessWidget {
                     Icons.analytics, 
                     Colors.green, 
                     const AttendanceListPage() 
+                  ),
+                  _buildMenuCard(
+                    context,
+                    "Leave Requests",
+                    "Approve or reject leave applications",
+                    Icons.event_note,
+                    Colors.purple,
+                    const AdminLeavePage(),
                   ),
                 ],
               ),
