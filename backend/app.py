@@ -56,24 +56,57 @@ def register_user():
 @app.route('/user/stats/<uid>', methods=['GET'])
 def get_user_stats(uid):
     try:
-        # Fetching attendance and leave count from Firestore
+        IST = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(IST)
+
         user_ref = db.collection('users').document(uid)
-        doc = user_ref.get()
-            
-        if not doc.exists:
+        user_doc = user_ref.get()
+
+        if not user_doc.exists:
             return jsonify({"error": "User not found"}), 404
 
-        # In a real app, you'd calculate this from an 'attendance' collection
-        # For now, we return mock data that matches your UI cards
-        stats = {
-            "attendance_rate": "98%",
-            "leaves_taken": "02",
-            "role": doc.to_dict().get('role', 'Employee')
-        }
-        return jsonify(stats), 200
+        user_data = user_doc.to_dict()
+
+        # Real approved leave days this year
+        start_of_year = datetime(now.year, 1, 1, tzinfo=IST)
+        leaves_query = (
+            db.collection('leaves')
+            .where('uid', '==', uid)
+            .where('status', '==', 'Approved')
+            .where('applied_at', '>=', start_of_year)
+            .stream()
+        )
+        total_leave_days = sum(l.to_dict().get('days', 1) for l in leaves_query)
+
+        # Real attendance rate this month
+        start_of_month = datetime(now.year, now.month, 1, tzinfo=IST)
+        attendance_query = (
+            db.collection('attendance')
+            .where('uid', '==', uid)
+            .where('type', '==', 'in')
+            .where('timestamp', '>=', start_of_month)
+            .stream()
+        )
+        present_dates = set()
+        for record in attendance_query:
+            ts = record.to_dict().get('timestamp')
+            if ts:
+                present_dates.add(ts.astimezone(IST).date())
+
+        days_elapsed = now.day
+        attendance_rate = (
+            f"{round((len(present_dates) / days_elapsed) * 100)}%"
+            if days_elapsed > 0 else "0%"
+        )
+
+        return jsonify({
+            "attendance_rate": attendance_rate,
+            "leaves_taken": str(total_leave_days),
+            "role": user_data.get('role', 'Employee'),
+        }), 200
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 
 @app.route('/attendance/clock', methods=['POST'])
