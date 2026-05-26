@@ -62,52 +62,36 @@ class _TimeCardPageState extends State<TimeCardPage> {
       return;
     }
 
-    final start = DateTime(
-      _startDate.year,
-      _startDate.month,
-      _startDate.day,
-      0,
-      0,
-      0,
-    );
-    final end = DateTime(
-      _endDate.year,
-      _endDate.month,
-      _endDate.day,
-      23,
-      59,
-      59,
-    );
-
     try {
+      // Only filter by uid — no timestamp filter in Firestore query
+      // This avoids the composite index requirement and UTC offset issues
       final query = await FirebaseFirestore.instance
           .collection('attendance')
           .where('uid', isEqualTo: uid)
-          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
-          .where('timestamp', isLessThanOrEqualTo: Timestamp.fromDate(end))
           .orderBy('timestamp', descending: false)
           .get();
 
-      // Group by the DATE part of display_time string
-      // display_time format: "2026-05-10 21:53:09"
+      debugPrint("Total attendance docs fetched: ${query.docs.length}");
+
+      // Group by date parsed from display_time string
       final Map<String, List<Map<String, dynamic>>> grouped = {};
 
       for (final doc in query.docs) {
         final data = doc.data();
-
-        // Use display_time as the real clock time shown to user
         final String? displayTimeStr = data['display_time'] as String?;
         final Timestamp? ts = data['timestamp'] as Timestamp?;
 
-        // Parse display_time — this is what we show in the UI
         DateTime? displayTime;
+
+        // Try parsing display_time first ("2026-05-17 20:53:23")
         if (displayTimeStr != null && displayTimeStr.isNotEmpty) {
           try {
-            displayTime = DateFormat(
-              'yyyy-MM-dd HH:mm:ss',
-            ).parse(displayTimeStr);
-          } catch (_) {
-            displayTime = ts?.toDate(); // fallback to server timestamp
+            displayTime = DateFormat('yyyy-MM-dd HH:mm:ss')
+                .parse(displayTimeStr, true)
+                .toLocal();
+          } catch (e) {
+            debugPrint("Failed to parse display_time: $displayTimeStr — $e");
+            displayTime = ts?.toDate();
           }
         } else {
           displayTime = ts?.toDate();
@@ -115,17 +99,27 @@ class _TimeCardPageState extends State<TimeCardPage> {
 
         if (displayTime == null) continue;
 
-        // Group key = date portion of display_time
-        final dateKey = DateFormat('yyyy-MM-dd').format(displayTime);
+        // Only include records within selected date range
+        final dateOnly =
+            DateTime(displayTime.year, displayTime.month, displayTime.day);
+        final startOnly =
+            DateTime(_startDate.year, _startDate.month, _startDate.day);
+        final endOnly = DateTime(_endDate.year, _endDate.month, _endDate.day);
 
+        if (dateOnly.isBefore(startOnly) || dateOnly.isAfter(endOnly)) continue;
+
+        final dateKey = DateFormat('yyyy-MM-dd').format(displayTime);
         grouped.putIfAbsent(dateKey, () => []);
         grouped[dateKey]!.add({
           ...data,
-          '_displayTime': displayTime, // parsed DateTime for sorting/display
+          '_displayTime': displayTime,
         });
+
+        debugPrint(
+            "Grouped $dateKey — type: ${data['type']} — time: $displayTime");
       }
 
-      // Build one card per day in the selected range
+      // Build one card per day in selected range
       final List<Map<String, dynamic>> cards = [];
       final int totalDays = _endDate.difference(_startDate).inDays + 1;
 
@@ -134,14 +128,13 @@ class _TimeCardPageState extends State<TimeCardPage> {
         final key = DateFormat('yyyy-MM-dd').format(day);
         final records = grouped[key] ?? [];
 
-        // Sort records within day by display_time ascending
+        // Sort within day by display_time ascending
         records.sort((a, b) {
           final aTime = a['_displayTime'] as DateTime;
           final bTime = b['_displayTime'] as DateTime;
           return aTime.compareTo(bTime);
         });
 
-        // First 'in' = punch in, last 'out' = punch out
         DateTime? punchIn;
         DateTime? punchOut;
 
@@ -157,7 +150,6 @@ class _TimeCardPageState extends State<TimeCardPage> {
         Duration? duration;
         if (punchIn != null && punchOut != null) {
           duration = punchOut.difference(punchIn);
-          // Negative duration = data error (out before in), treat as null
           if (duration.isNegative) duration = null;
         }
 
@@ -170,10 +162,15 @@ class _TimeCardPageState extends State<TimeCardPage> {
         });
       }
 
-      setState(() {
-        _timeCards = cards.reversed.toList(); // most recent first
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _timeCards = cards.reversed.toList();
+          _isLoading = false;
+        });
+      }
+
+      debugPrint(
+          "Time cards built: ${cards.length}, days with data: ${grouped.keys.length}");
     } catch (e) {
       debugPrint("TimeCard fetch error: $e");
       if (mounted) setState(() => _isLoading = false);
@@ -244,14 +241,14 @@ class _TimeCardPageState extends State<TimeCardPage> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _timeCards.isEmpty
-                ? _buildEmptyState()
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    itemCount: _timeCards.length,
-                    itemBuilder: (context, index) {
-                      return _buildTimeCardTile(_timeCards[index]);
-                    },
-                  ),
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        itemCount: _timeCards.length,
+                        itemBuilder: (context, index) {
+                          return _buildTimeCardTile(_timeCards[index]);
+                        },
+                      ),
           ),
         ],
       ),
@@ -363,8 +360,7 @@ class _TimeCardPageState extends State<TimeCardPage> {
     final Duration? duration = card['duration'] as Duration?;
     final List allRecords = card['allRecords'] as List;
 
-    final bool isToday =
-        DateFormat('yyyy-MM-dd').format(date) ==
+    final bool isToday = DateFormat('yyyy-MM-dd').format(date) ==
         DateFormat('yyyy-MM-dd').format(DateTime.now());
     final bool isWeekend =
         date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
